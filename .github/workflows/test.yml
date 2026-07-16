@@ -1,0 +1,30 @@
+# .github/workflows/test.yml - CI for testing only
+
+name: Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      - name: Run tests
+        run: |
+          cd backend
+          pytest tests/ --cov=. --cov-report=xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
