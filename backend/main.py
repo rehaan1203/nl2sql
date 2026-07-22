@@ -26,6 +26,8 @@ from starlette.requests import Request
 from cachetools import TTLCache
 import json
 
+from utils.metrics import metrics
+
 from models import *
 from schema_manager import SchemaManager
 from vector_store import VectorStore
@@ -38,6 +40,9 @@ from sql_validator import SQLValidator
 from safe_executor import SafeExecutor
 from redis_client import RedisClient
 from errors import ErrorHandler, NL2SQLError, ErrorType
+from utils.model_cache import ModelCache
+
+model_cache = ModelCache()
 
 # Load environment variables
 load_dotenv()
@@ -58,23 +63,9 @@ import sys
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-# Configure logging with RotatingFileHandler
-from logging.handlers import RotatingFileHandler
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-file_handler = RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
-console_handler = logging.StreamHandler(sys.stdout)
-
-formatter = logging.Formatter('%(asctime)s - [%(request_id)s] - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-file_handler.addFilter(RequestIdFilter())
-console_handler.addFilter(RequestIdFilter())
-
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+# Configure structured logging
+from utils.logging_config import setup_logging
+logger = setup_logging("INFO")
 
 # Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -120,14 +111,29 @@ async def lifespan(app: FastAPI):
     model = os.getenv("AI_MODEL", "gemini-1.5-flash")
     
     # 1. Initialize Embeddings once to save memory and startup time
-    from langchain_huggingface import HuggingFaceEmbeddings
-    logger.info("Loading embedding model...")
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    import torch
+    
+    logger.info("🔥 Warming up model cache...")
+    embedding_model = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    cached_model = model_cache.get_cached_model(embedding_model)
+    if cached_model:
+        logger.info(f"💾 Embedding model found in cache: {embedding_model}")
+    else:
+        logger.info(f"📥 Caching embedding model (first load will take longer): {embedding_model}")
+    
     embeddings = HuggingFaceEmbeddings(
-        model_name=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
-        model_kwargs={'device': 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
+        model_name=embedding_model,
+        model_kwargs={
+            'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        },
+        encode_kwargs={
+            'normalize_embeddings': True,
+            'batch_size': 32,
+        },
+        cache_folder=os.getenv("HF_CACHE_DIR", "./hf_cache"),
     )
-    logger.info("✅ Embeddings loaded")
+    logger.info("✅ Embeddings loaded and warmed up")
 
     # 2. Schema Manager
     schema_manager = SchemaManager(database_url, load_embeddings=False)
@@ -236,6 +242,29 @@ async def timing_middleware(request: Request, call_next):
         logger.warning(f"Slow query: {request.url.path} took {process_time:.2f}s")
     
     return response
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Track request metrics."""
+    start = time.time()
+    
+    try:
+        response = await call_next(request)
+        duration = time.time() - start
+        
+        # Record query time for API endpoints
+        if request.url.path == "/api/query":
+            metrics.record_query_time(duration, "api_query")
+        
+        return response
+    except Exception as e:
+        metrics.record_error(str(type(e).__name__))
+        raise
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """Get performance metrics."""
+    return metrics.get_stats()
 
 @app.middleware("http")
 async def session_middleware(request: Request, call_next):
@@ -402,11 +431,9 @@ async def run_query(request: Request, body: QueryRequest):
             # 7. Check if operation was successful
             if not result.get("success", False):
                 error_msg = result.get("error", "Unknown error")
-                raise NL2SQLError(
-                    message=error_msg,
-                    error_type=ErrorType.AI_FAILURE,
-                    details={"result": result}
-                )
+                logger.warning(f"⚠️ Operation failed but returning gracefully: {error_msg}")
+                # We intentionally do not raise an HTTP exception here so the chat UI
+                # can display the failure message naturally in the conversation history.
             
             # 8. Prepare response
             response_data = {
@@ -416,9 +443,10 @@ async def run_query(request: Request, body: QueryRequest):
                 "row_count": result.get("row_count", 0),
                 "affected_rows": result.get("affected_rows", 0),
                 "execution_time_ms": result.get("execution_time_ms", 0),
-                "explanation": result.get("explanation", ""),
+                "explanation": result.get("error", "Execution failed") if not result.get("success", True) else result.get("explanation", ""),
                 "operation_type": result.get("operation_type", "SELECT"),
                 "success": result.get("success", True),
+                "error": result.get("error", None) if not result.get("success", True) else None,
                 "message": result.get("message", ""),
                 "session_id": session_id,
                 # For write operations, include refreshed data
@@ -439,6 +467,8 @@ async def run_query(request: Request, body: QueryRequest):
                 redis_client.cache_query_result(body.natural_language, response.dict())
             
             # 10. Add to conversation history
+            if not redis_client.get_session_meta(session_id):
+                redis_client.create_conversation(session_id, f"{current_table or 'Query'}: {body.natural_language[:30]}")
             redis_client.add_to_conversation(
                 session_id,
                 body.natural_language,
@@ -474,6 +504,8 @@ async def run_query(request: Request, body: QueryRequest):
                         temp_executor.engine.dispose()
                     if 'temp_schema_manager' in locals() and hasattr(temp_schema_manager, 'engine'):
                         temp_schema_manager.engine.dispose()
+                        if hasattr(temp_schema_manager, 'db') and hasattr(temp_schema_manager.db, '_engine'):
+                            temp_schema_manager.db._engine.dispose()
                         
                     # Force garbage collection to ensure SQLAlchemy releases the file handles on Windows
                     import gc
@@ -882,6 +914,9 @@ async def upload_database(request_obj: Request, file: UploadFile = File(...)):
             "total_rows": 0  # Could count rows if needed
         }
         
+        # Get active database
+        current_active = redis_client.get_active_database(session_id)
+        
         file_hash = redis_client.store_uploaded_file(
             user_id=session_id,
             file_data=content,
@@ -889,27 +924,35 @@ async def upload_database(request_obj: Request, file: UploadFile = File(...)):
             metadata=metadata
         )
         
-        # Set as active database
-        redis_client.set_active_database(session_id, file_hash)
-        
-        # CLEAR VECTOR STORE CACHE FOR THIS SESSION
-        if vector_store:
-            try:
-                vector_store.clear_session_store(session_id)
-                logger.info(f"🧹 Cleared old vector store schema for session {session_id}")
-            except Exception as vs_err:
-                logger.warning(f"Failed to clear vector store: {vs_err}")
+        switched_active = False
+        # Set as active database ONLY if no database is currently active
+        if not current_active:
+            redis_client.set_active_database(session_id, file_hash)
+            switched_active = True
+            
+            # CLEAR VECTOR STORE CACHE FOR THIS SESSION
+            if vector_store:
+                try:
+                    vector_store.clear_session_store(session_id)
+                    logger.info(f"🧹 Cleared old vector store schema for session {session_id}")
+                except Exception as vs_err:
+                    logger.warning(f"Failed to clear vector store: {vs_err}")
+                    
+            # INVALIDATE SCHEMA CACHE
+            if schema_manager:
+                schema_manager.invalidate_cache()
                 
-        # INVALIDATE SCHEMA CACHE
-        if schema_manager:
-            schema_manager.invalidate_cache()
+            # INVALIDATE EXPLANATION CACHE
+            if agent and hasattr(agent, 'explainer'):
+                agent.explainer.invalidate_cache()
         
         return {
             "success": True,
             "message": f"Database '{file.filename}' uploaded successfully",
             "file_hash": file_hash,
             "tables": table_names,
-            "tables_count": len(table_names)
+            "tables_count": len(table_names),
+            "switched_active": switched_active
         }
         
     except HTTPException:
@@ -1311,3 +1354,60 @@ async def clear_suggestions(request_obj: Request):
         logger.error(f"Failed to clear suggestions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/conversations")
+async def get_conversations(request_obj: Request):
+    """Get all conversation sessions for user"""
+    try:
+        session_id = getattr(request_obj.state, 'session_id', 'default_session')
+        user_id = session_id.split(':')[0] if ':' in session_id else 'default'
+        sessions = redis_client.client.smembers(f"user:sessions:{user_id}")
+        threads = []
+        for sid in sessions:
+            sid_str = sid.decode('utf-8')
+            meta = redis_client.get_session_meta(sid_str)
+            if meta:
+                meta['session_id'] = sid_str
+                # get message count
+                history = redis_client.get_conversation(sid_str, limit=50)
+                meta['message_count'] = len(history)
+                threads.append(meta)
+        # sort by created_at desc
+        threads.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return threads
+    except Exception as e:
+        logger.error(f"Failed to fetch conversations: {e}")
+        return []
+
+@app.get("/api/conversations/{session_id}")
+async def get_conversation_history(session_id: str):
+    """Get conversation history for a specific session"""
+    try:
+        history = redis_client.get_conversation(session_id, limit=50)
+        meta = redis_client.get_session_meta(session_id)
+        return {
+            "meta": meta,
+            "history": history
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch conversation history: {e}")
+        return {"meta": None, "history": []}
+@app.get("/api/pool/status")
+async def get_pool_status():
+    """Get connection pool status."""
+    try:
+        if executor:
+            return executor.get_pool_status()
+        return {"status": "pool_not_available"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Dispose of connection pool on shutdown."""
+    if executor and hasattr(executor, 'engine'):
+        executor.engine.dispose()
+        logger.info("?? Connection pool disposed")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

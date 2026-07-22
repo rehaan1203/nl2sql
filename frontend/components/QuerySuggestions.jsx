@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { RefreshCw } from 'lucide-react';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -65,7 +66,7 @@ export default function QuerySuggestions({
             className="p-1.5 text-slate-400 hover:text-indigo-600 dark:text-slate-500 dark:hover:text-indigo-400 rounded-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
             title="Regenerate suggestions"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <RefreshCw className="w-4 h-4" />
           </button>
         )}
       </div>

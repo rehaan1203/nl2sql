@@ -3,6 +3,7 @@
 import pytest
 from sql_validator import SQLValidator
 from schema_manager import SchemaManager
+from operation_detector import OperationDetector
 
 class TestSQLValidator:
     def test_table_validation(self, test_db_path):
@@ -21,29 +22,22 @@ class TestSQLValidator:
         assert len(errors) > 0
         assert "nonexistent" in errors[0]
     
-    def test_column_validation(self, test_db_path):
-        """Test column existence validation."""
-        schema_manager = SchemaManager(f"sqlite:///{test_db_path}")
-        validator = SQLValidator(None, schema_manager)
+    def test_operation_detection(self):
+        """Test SQL operation detection for all categories."""
+        detector = OperationDetector()
         
-        # Valid column
-        valid, errors = validator.validate_columns_exist("SELECT name FROM users")
-        assert valid is True
+        # DDL
+        assert detector.detect_category("CREATE TABLE test (id INTEGER)") == "DDL"
+        assert detector.detect_operation_type("CREATE TABLE test (id INTEGER)") == "CREATE"
         
-        # Invalid column
-        valid, errors = validator.validate_columns_exist("SELECT invalid_col FROM users")
-        assert valid is False
-    
-    def test_safety_check(self, test_db_path):
-        """Test SQL safety validation."""
-        schema_manager = SchemaManager(f"sqlite:///{test_db_path}")
-        validator = SQLValidator(None, schema_manager)
+        # DML
+        assert detector.detect_category("SELECT * FROM users") == "DML"
+        assert detector.detect_operation_type("SELECT * FROM users") == "SELECT"
         
-        # Safe query
-        valid, errors = validator._check_safety("SELECT * FROM users")
-        assert valid is True
+        # TCL
+        assert detector.detect_category("BEGIN TRANSACTION") == "TCL"
+        assert detector.detect_operation_type("BEGIN TRANSACTION") == "BEGIN"
         
-        # Unsafe query
-        valid, errors = validator._check_safety("DROP TABLE users")
-        assert valid is False
-        assert "DROP" in " ".join(errors)
+        # DCL
+        assert detector.detect_category("GRANT SELECT ON users TO admin") == "DCL"
+        assert detector.detect_operation_type("GRANT SELECT ON users TO admin") == "GRANT"

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { uploadDatabase } from '../lib/api';
 import { Database, UploadCloud, ArrowUp } from 'lucide-react';
 
-export default function UploadDatabase({ onUploadSuccess, onUploadError }) {
+export default function UploadDatabase({ onUploadSuccess, onUploadError, isProcessing = false }) {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -49,17 +49,16 @@ export default function UploadDatabase({ onUploadSuccess, onUploadError }) {
       setUploadProgress(100);
       
       // Success callback
-      onUploadSuccess(data);
-      
-      // Reset
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (onUploadSuccess) {
+        await onUploadSuccess(data);
       }
+      
+      // We don't reset selectedFile immediately here anymore, 
+      // as the parent will close the modal when processing finishes.
+      setIsUploading(false);
 
     } catch (error) {
       onUploadError(error.message || 'Upload failed. Please try again.');
-    } finally {
       setIsUploading(false);
       setTimeout(() => setUploadProgress(0), 1000);
     }
@@ -111,13 +110,13 @@ export default function UploadDatabase({ onUploadSuccess, onUploadError }) {
           <div className="flex items-center gap-3">
             <button
               onClick={handleUpload}
-              disabled={isUploading}
+              disabled={isUploading || isProcessing}
               className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-500 to-violet-500 hover:shadow-lg disabled:opacity-50 text-white rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95"
             >
-              {isUploading ? (
+              {(isUploading || isProcessing) ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Uploading...
+                  {isProcessing ? 'Analyzing schema...' : 'Uploading...'}
                 </>
               ) : (
                 <>
@@ -133,7 +132,8 @@ export default function UploadDatabase({ onUploadSuccess, onUploadError }) {
                   fileInputRef.current.value = '';
                 }
               }}
-              className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium transition-colors"
+              disabled={isUploading || isProcessing}
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
@@ -141,12 +141,12 @@ export default function UploadDatabase({ onUploadSuccess, onUploadError }) {
         )}
 
         {/* Progress bar */}
-        {isUploading && (
+        {(isUploading || isProcessing) && (
           <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden mt-3">
             <motion.div
               className="bg-indigo-500 h-full rounded-full"
               initial={{ width: 0 }}
-              animate={{ width: `${uploadProgress}%` }}
+              animate={{ width: isProcessing ? '100%' : `${uploadProgress}%` }}
               transition={{ duration: 0.2 }}
             />
           </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchTableData, deleteTable, fetchSchema } from '../lib/api';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Table2, RefreshCw, X, AlertCircle, Trash2 } from 'lucide-react';
 
 export default function TableDataViewer({ tableName, onClose, refreshTrigger = 0, onSwitchTable }) {
@@ -165,19 +165,35 @@ export default function TableDataViewer({ tableName, onClose, refreshTrigger = 0
       </div>
       
       {/* Custom Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <AnimatePresence>
+        {showDeleteConfirm && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm border border-slate-200 dark:border-slate-700 overflow-hidden"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
           >
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
-                <AlertCircle size={24} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Table?</h3>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm border border-slate-200 dark:border-slate-700 overflow-hidden relative z-10"
+            >
+              <div className="p-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
+                  <AlertCircle size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Delete Table?</h3>
               <p className="text-slate-600 dark:text-slate-300 text-sm">
                 Are you sure you want to completely delete this table? This action cannot be undone.
               </p>
@@ -206,8 +222,9 @@ export default function TableDataViewer({ tableName, onClose, refreshTrigger = 0
               </button>
             </div>
           </motion.div>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

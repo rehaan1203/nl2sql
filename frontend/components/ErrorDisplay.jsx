@@ -1,97 +1,75 @@
-export default function ErrorDisplay({ error, onRetry, onSwitchTable }) {
+import { ClipboardList, BarChart2, Bot, Hourglass, Lightbulb } from 'lucide-react';
+
+export default function ErrorDisplay({ error }) {
   if (!error) return null;
   
-  const getErrorConfig = () => {
-    // Determine error details if they are nested
-    const errorType = error.error_type || (error.details && error.details.error_type) || 'ai_failure';
-    
+  // Handle structured errors from backend
+  if (error.error_type) {
     const configs = {
       table_not_found: {
-        icon: '📋',
+        icon: <ClipboardList size={24} className="text-amber-500" />,
+        title: 'Table Not Found',
         bg: 'bg-amber-50 dark:bg-amber-900/20',
-        border: 'border-amber-200 dark:border-amber-800',
-        title: 'Table Not Found'
+        border: 'border-amber-200 dark:border-amber-800'
       },
       column_not_found: {
-        icon: '📊',
+        icon: <BarChart2 size={24} className="text-amber-500" />,
+        title: 'Column Not Found',
         bg: 'bg-amber-50 dark:bg-amber-900/20',
-        border: 'border-amber-200 dark:border-amber-800',
-        title: 'Column Not Found'
+        border: 'border-amber-200 dark:border-amber-800'
       },
       ai_failure: {
-        icon: '🤖',
+        icon: <Bot size={24} className="text-red-500" />,
+        title: 'AI Generation Failed',
         bg: 'bg-red-50 dark:bg-red-900/20',
-        border: 'border-red-200 dark:border-red-800',
-        title: 'AI Failed to Generate Query'
+        border: 'border-red-200 dark:border-red-800'
       },
-      cross_table_query: {
-        icon: '🔄',
+      rate_limit_error: {
+        icon: <Hourglass size={24} className="text-blue-500" />,
+        title: 'Rate Limit Exceeded',
         bg: 'bg-blue-50 dark:bg-blue-900/20',
-        border: 'border-blue-200 dark:border-blue-800',
-        title: 'Multiple Tables Required'
-      },
-      server_error: {
-        icon: '⚠️',
-        bg: 'bg-red-50 dark:bg-red-900/20',
-        border: 'border-red-200 dark:border-red-800',
-        title: 'Server Error'
+        border: 'border-blue-200 dark:border-blue-800'
       }
     };
-    return configs[errorType] || configs.ai_failure;
-  };
-  
-  const config = getErrorConfig();
-  const errorMessage = error.message || error.error || 'An unknown error occurred.';
-  const details = error.details || error;
-  
-  return (
-    <div className={`rounded-lg border p-4 ${config.bg} ${config.border} mb-4`}>
-      <div className="flex items-start gap-3">
-        <span className="text-2xl">{config.icon}</span>
-        <div className="flex-1">
-          <h4 className="font-semibold text-slate-800 dark:text-slate-200">
-            {config.title}
-          </h4>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            {errorMessage}
-          </p>
-          
-          {details.available_tables && (
-            <div className="mt-2 text-xs text-slate-500 dark:text-slate-500">
-              Available tables: {details.available_tables.join(', ')}
-            </div>
-          )}
-          
-          {error.suggested_action && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400">💡</span>
-              <span className="text-sm text-slate-600 dark:text-slate-400">
-                {error.suggested_action}
-              </span>
-            </div>
-          )}
-          
-          <div className="mt-3 flex gap-2">
-            {onSwitchTable && (details.error_type === 'table_not_found' || details.error_type === 'cross_table_query') && details.suggested_tables && details.suggested_tables.length > 0 && (
-              <button
-                onClick={() => onSwitchTable(details.suggested_tables[0])}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-              >
-                Switch to '{details.suggested_tables[0]}'
-              </button>
+    
+    const config = configs[error.error_type] || configs.ai_failure;
+    
+    return (
+      <div className={`p-4 rounded-lg border ${config.bg} ${config.border} mb-4`}>
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5">{config.icon}</div>
+          <div className="flex-1">
+            <h4 className="font-semibold text-slate-800 dark:text-slate-200">
+              {config.title}
+            </h4>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              {error.error || error.message}
+            </p>
+            
+            {error.details?.available_tables && (
+              <div className="mt-2 text-xs text-slate-500">
+                Available tables: {error.details.available_tables.join(', ')}
+              </div>
             )}
             
-            {onRetry && (
-              <button
-                onClick={onRetry}
-                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-sm rounded-lg transition-colors"
-              >
-                Retry
-              </button>
+            {error.suggested_action && (
+              <div className="mt-2 flex items-start gap-2 bg-slate-100 dark:bg-slate-800/50 p-2 rounded-md">
+                <Lightbulb size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                <span className="text-sm text-slate-700 dark:text-slate-300">
+                  {error.suggested_action}
+                </span>
+              </div>
             )}
           </div>
         </div>
       </div>
+    );
+  }
+  
+  // Fallback for legacy errors
+  return (
+    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mb-4">
+      <p className="text-red-700 dark:text-red-300">{error.error || error.message || String(error)}</p>
     </div>
   );
 }

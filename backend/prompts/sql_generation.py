@@ -26,6 +26,7 @@ class SQLGenerationPrompts:
     4. For INSERT, include all required columns
     5. For UPDATE, always include a WHERE clause
     6. For DELETE, always include a WHERE clause
+    7. Automatically capitalize proper nouns (e.g. Names, Cities) correctly when inserting or updating data, even if the user typed them in lowercase.
     
     ### Output:
     Return ONLY the SQL query, no explanations or formatting.
@@ -75,6 +76,7 @@ class SQLGenerationPrompts:
     Question: {question}
     Schema: {schema}
     Important: Include all required columns (NOT NULL).
+    Important: Automatically capitalize proper nouns (e.g. Names, Cities) correctly, even if typed in lowercase.
     Return only the INSERT query.
     """
     
@@ -83,6 +85,7 @@ class SQLGenerationPrompts:
     Question: {question}
     Schema: {schema}
     Important: MUST include a WHERE clause.
+    Important: Automatically capitalize proper nouns (e.g. Names, Cities) correctly, even if typed in lowercase.
     Return only the UPDATE query.
     """
     

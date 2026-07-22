@@ -35,7 +35,7 @@ export default function ChartView({ data }) {
     if (numKeys.length === 0) return;
 
     const labels = data.map(row => row[labelKey]);
-    
+
     const colors = [
       'rgba(99, 102, 241, 0.8)', // Indigo 500
       'rgba(139, 92, 246, 0.8)', // Violet 500
@@ -92,7 +92,7 @@ export default function ChartView({ data }) {
       }
     },
     plugins: {
-      legend: { 
+      legend: {
         position: 'top',
         labels: { color: isDarkMode ? '#cbd5e1' : '#475569' }
       },
@@ -115,21 +115,21 @@ export default function ChartView({ data }) {
   return (
     <div className="flex flex-col h-[400px] w-full p-6 glass-panel rounded-2xl transition-colors">
       <div className="flex justify-end gap-2 mb-4">
-        <button 
+        <button
           onClick={() => setChartType('bar')}
           className={`p-1.5 rounded transition-colors ${chartType === 'bar' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
           title="Bar Chart"
         >
           <BarChart size={18} />
         </button>
-        <button 
+        <button
           onClick={() => setChartType('line')}
           className={`p-1.5 rounded transition-colors ${chartType === 'line' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
           title="Line Chart"
         >
           <LineChart size={18} />
         </button>
-        <button 
+        <button
           onClick={() => setChartType('pie')}
           className={`p-1.5 rounded transition-colors ${chartType === 'pie' || chartType === 'doughnut' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
           title="Pie Chart"

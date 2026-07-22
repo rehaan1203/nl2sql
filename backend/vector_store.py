@@ -4,9 +4,10 @@ import os
 import json
 from typing import List, Dict, Optional
 import chromadb
+import torch
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,18 @@ class VectorStore:
             else:
                 self.embeddings = HuggingFaceEmbeddings(
                     model_name=embedding_model,
-                    model_kwargs={'device': 'cpu'},
-                    encode_kwargs={'normalize_embeddings': True}
+                    model_kwargs={
+                        'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+                    },
+                    encode_kwargs={
+                        'normalize_embeddings': True,
+                        'batch_size': 32,
+                    },
+                    cache_folder=os.getenv("HF_CACHE_DIR", "./hf_cache"),
                 )
                 logger.info(f"✅ Hugging Face embeddings initialized with model: {embedding_model}")
+                logger.info(f"   - Device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
+                logger.info(f"   - dtype: {'float16' if torch.cuda.is_available() else 'float32'}")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Hugging Face embeddings: {e}")
             self.embeddings = None

@@ -49,3 +49,11 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Custom
+tree.txt
+/backend/hf_cache/
+/backend/uploads/
+/backend/.active_db
+/backend/chroma_db/
+/backend/pyproject.toml

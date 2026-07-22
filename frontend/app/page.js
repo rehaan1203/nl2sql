@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import QueryInput from '../components/QueryInput';
 import QuerySuggestions from '../components/QuerySuggestions';
 import ResultsPanel from '../components/ResultsPanel';
+import ChatContainer from '../components/ChatContainer';
 import SchemaExplorer from '../components/SchemaExplorer';
 import QueryHistory from '../components/QueryHistory';
 import TableDataViewer from '../components/TableDataViewer';
@@ -48,11 +49,14 @@ export default function Home() {
   const [showSchema, setShowSchema] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [isBackendReachable, setIsBackendReachable] = useState(true);
+  const [dbUploadTrigger, setDbUploadTrigger] = useState(0);
   const [dbInfo, setDbInfo] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDbManager, setShowDbManager] = useState(false);
   const [isHistoryView, setIsHistoryView] = useState(false);
+  // Add new state to track if user has interacted with the UI this session
+  const [hasInteractedThisSession, setHasInteractedThisSession] = useState(false);
   const [activePreviewTable, setActivePreviewTable] = useState(null);
   const [tableRefreshTrigger, setTableRefreshTrigger] = useState(0);
   const [isEditingSql, setIsEditingSql] = useState(false);
@@ -167,7 +171,7 @@ export default function Home() {
   const handleDatabaseSelect = async (hash) => {
     try {
       // Save current state before switching
-      dbCacheRef.current[activeDbName] = { result, query, isHistoryView, error };
+      dbCacheRef.current[activeDbName] = { result, query, isHistoryView, error, history, activePreviewTable };
 
       setSchemaLoading(true);
       await switchDatabase(hash);
@@ -182,11 +186,10 @@ export default function Home() {
       setQuery(cached?.query || '');
       setIsHistoryView(cached?.isHistoryView || false);
       setError(cached?.error || null);
+      setHistory(cached?.history || []);
+      setActivePreviewTable(cached?.activePreviewTable || null);
 
       setActiveDbName(newDbName);
-
-      // Clear split view if any
-      setActivePreviewTable(null);
     } catch (e) {
       toast.error(e.message || "Failed to switch database");
     } finally {
@@ -222,10 +225,11 @@ export default function Home() {
     }
   }, [history, isLoading, isChatMode]);
 
-  const handleSubmit = async (queryText) => {
-    if (!queryText.trim()) return;
+  const handleSubmit = async (q = query) => {
+    if (!q.trim()) return;
 
-    setSubmittedQuery(queryText);
+    setHasInteractedThisSession(true);
+    setSubmittedQuery(q);
     setQuery('');
     setIsLoading(true);
     setError(null);
@@ -233,7 +237,7 @@ export default function Home() {
     setIsHistoryView(false);
 
     try {
-      const response = await runQuery(queryText, { currentTable: activePreviewTable, autoSwitch: true });
+      const response = await runQuery(q, { currentTable: activePreviewTable, autoSwitch: true });
       
       setResult(response);
       toast.success(`Query returned ${response.row_count} rows in ${response.execution_time_ms}ms`);
@@ -241,7 +245,7 @@ export default function Home() {
       // Add to history with all necessary display data cached for quick UI restoration
       const historyItem = {
         id: Date.now(),
-        natural_language: queryText,
+        natural_language: q,
         sql: response.sql,
         row_count: response.row_count,
         execution_time_ms: response.execution_time_ms,
@@ -280,7 +284,7 @@ export default function Home() {
       setHistory(prev => [
         {
           id: Date.now(),
-          natural_language: queryText,
+          natural_language: q,
           sql: null,
           row_count: 0,
           created_at: new Date().toISOString(),
@@ -321,6 +325,7 @@ export default function Home() {
   };
 
   const handleHistoryClick = async (item) => {
+    setHasInteractedThisSession(true);
     setSubmittedQuery(item.natural_language);
     setQuery('');
 
@@ -413,26 +418,99 @@ export default function Home() {
     }
   };
 
-  const handleUploadSuccess = (data) => {
+  const handleUploadSuccess = async (data) => {
+    // Cache current DB state before switching to new one
+    if (activeDbName) {
+      dbCacheRef.current[activeDbName] = { result, query, isHistoryView, error, history, activePreviewTable };
+    }
+    
     setDbInfo(data);
-    setShowUploadModal(false);
     setUploadError(null);
     setSchemaLoading(true);
 
-    // Refresh schema
-    fetchSchema()
-      .then(setSchema)
-      .catch(err => setError('Failed to refresh schema after upload'))
-      .finally(() => setSchemaLoading(false));
-
-    getDatabaseInfo().then(info => {
-      setActiveDbName(info?.database_name || "Custom Database");
-    });
+    try {
+      if (data.switched_active || !activeDbName || activeDbName === "Default Database") {
+        // Refresh schema
+        const schemaData = await fetchSchema();
+        setSchema(schemaData);
+        
+        const info = await getDatabaseInfo();
+        const newDbName = info?.database_name || "Custom Database";
+        setActiveDbName(newDbName);
+        
+        // Clear current UI state for the newly uploaded DB
+        setResult(null);
+        setQuery('');
+        setIsHistoryView(false);
+        setError(null);
+        setHistory([]);
+        setActivePreviewTable(null);
+      } else {
+        // Did not switch active db, just trigger SchemaExplorer to refresh
+        setDbUploadTrigger(prev => prev + 1);
+      }
+    } catch (err) {
+      setError('Failed to refresh schema after upload');
+    } finally {
+      setSchemaLoading(false);
+      setShowUploadModal(false);
+    }
   };
 
   const handleUploadError = (error) => {
     setUploadError(error);
   };
+
+  const handleDatabaseDeleted = async (deletedDbHash, result) => {
+    // Refresh DB list and if the active one was deleted, reset state
+    try {
+      if (result && result.was_active) {
+        setSchema(null);
+        setActiveDbName("Default Database");
+        setHistory([]);
+        setResult(null);
+        setQuery('');
+        setActivePreviewTable(null);
+        
+        // Fetch new default schema if available
+        const info = await getDatabaseInfo();
+        setActiveDbName(info?.database_name || "Custom Database");
+        const schemaData = await fetchSchema();
+        setSchema(schemaData);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const chatMessages = useMemo(() => {
+    const msgs = [];
+    [...history].reverse().forEach(item => {
+      msgs.push({
+        type: 'user',
+        content: item.natural_language,
+        timestamp: item.created_at
+      });
+      msgs.push({
+        type: 'assistant',
+        content: item.success === false ? (item.error || 'Execution failed') : (item.explanation || 'Here are the results of your query.'),
+        timestamp: item.created_at,
+        result: item, // Pass the whole item even on error to access suggested_fix
+        error: item.success === false ? (item.error || 'Execution failed') : null,
+        originalQuery: item.natural_language
+      });
+    });
+    
+    if (isLoading && submittedQuery) {
+      msgs.push({
+        type: 'user',
+        content: submittedQuery,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return msgs;
+  }, [history, isLoading, submittedQuery]);
 
   return (
     <div className="min-h-screen flex flex-col font-sans transition-colors text-slate-900 dark:text-slate-100">
@@ -489,7 +567,7 @@ export default function Home() {
               {/* Upload DB Button - Enhanced */}
               <Tooltip content="Upload a SQLite database" position="bottom">
                 <button
-                  onClick={() => setShowUploadModal(true)}
+                  onClick={() => { setDbInfo(null); setUploadError(null); setShowUploadModal(true); }}
                   className="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-200 hover:scale-105 flex items-center gap-2"
                 >
                   <Upload size={16} />
@@ -571,6 +649,8 @@ export default function Home() {
                 activeDbName={activeDbName}
                 onPreviewTable={(tableName) => setActivePreviewTable(tableName)}
                 activePreviewTable={activePreviewTable}
+                onDatabaseDeleted={handleDatabaseDeleted}
+                refreshTrigger={dbUploadTrigger}
               />
             </motion.div>
           )}
@@ -594,8 +674,8 @@ export default function Home() {
 
                   {/* Scrollable Results Area */}
                   <div className="flex-1 overflow-y-auto pb-6 custom-scrollbar pr-2 flex flex-col">
-                    {!result && !isLoading && (
-                      <div className="flex flex-col items-center pt-8 pb-6 w-full">
+                    {((!hasInteractedThisSession && !activePreviewTable) || (chatMessages.length === 0 && !isLoading)) && (
+                      <div className="flex flex-col items-center justify-center flex-1 w-full">
                         <div className="mb-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
                           <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500 dark:from-slate-100 dark:to-slate-400 mb-3 tracking-tight py-1 leading-normal">
                             Talk to your database
@@ -617,118 +697,21 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Render Dashboard or Chat based on mode */}
-                    {!isChatMode ? (
-                      // --- DASHBOARD MODE ---
-                      <>
-                        {isLoading && (
-                          <div className="flex-1 flex flex-col pt-8">
-                            <TableSkeleton />
-                          </div>
-                        )}
-                        
-                        {result && !isLoading && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.15, ease: "easeOut" }}
-                            className="mt-auto pt-4 relative"
-                          >
-                            {isEditingSql && (
-                              <div className="absolute inset-0 z-10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-[2px] rounded-xl flex items-center justify-center">
-                                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex flex-col items-center">
-                                  <div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-600 border-t-indigo-600 dark:border-t-indigo-500 rounded-full animate-spin mb-3"></div>
-                                  <p className="text-slate-700 dark:text-slate-300 text-sm font-medium">Executing updated SQL...</p>
-                                </div>
-                              </div>
-                            )}
-                            <ResultsPanel 
-                              result={result} 
-                              onExecuteSql={handleExecuteEditedSql} 
-                              onClose={() => { setResult(null); setIsHistoryView(false); }} 
-                            />
-                          </motion.div>
-                        )}
-                      </>
-                    ) : (
-                      // --- CHATBOT MODE ---
-                      <>
-                        {isHistoryView && result ? (
-                          <div className="flex flex-col mb-6">
-                            <div className="flex justify-between items-center mb-6 pt-4 px-2">
-                              <button 
-                                onClick={() => { setIsHistoryView(false); setResult(null); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-medium border border-slate-200 dark:border-slate-700"
-                              >
-                                <ArrowLeft size={16} />
-                                Return to Chat
-                              </button>
-                            </div>
-                            <motion.div 
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="flex w-full justify-end mb-4 px-2"
-                            >
-                              <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-5 py-3 shadow-sm max-w-[80%]">
-                                <p className="text-[15px] font-medium leading-relaxed">{submittedQuery}</p>
-                              </div>
-                            </motion.div>
-                            <motion.div
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="relative"
-                            >
-                              <ResultsPanel result={result} onExecuteSql={handleExecuteEditedSql} />
-                            </motion.div>
-                          </div>
-                        ) : (
-                          <>
-                            {history.slice().reverse().map((item) => (
-                              <div key={item.id} className="flex flex-col mb-6">
-                                <motion.div 
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="flex w-full justify-end mb-4 pt-4 px-2"
-                                >
-                                  <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-5 py-3 shadow-sm max-w-[80%]">
-                                    <p className="text-[15px] font-medium leading-relaxed">{item.natural_language}</p>
-                                  </div>
-                                </motion.div>
-                                
-                                <motion.div
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="relative"
-                                >
-                                  {item.success === false ? (
-                                    <ErrorDisplay error={{ error: item.error || 'Execution failed', error_type: 'execution_failed' }} />
-                                  ) : (
-                                    <ResultsPanel result={item} onExecuteSql={handleExecuteEditedSql} />
-                                  )}
-                                </motion.div>
-                              </div>
-                            ))}
-                            
-                            {isLoading && submittedQuery && (
-                              <div className="flex flex-col mb-6">
-                                <motion.div 
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="flex w-full justify-end mb-4 pt-4 px-2"
-                                >
-                                  <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-5 py-3 shadow-sm max-w-[80%]">
-                                    <p className="text-[15px] font-medium leading-relaxed">{submittedQuery}</p>
-                                  </div>
-                                </motion.div>
-                                
-                                <div className="flex-1 flex flex-col justify-end pb-4 pt-4">
-                                  <TableSkeleton />
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </>
+                    {/* Render ChatContainer for all interactions once interacted */}
+                    {(!(!hasInteractedThisSession && !activePreviewTable) && (chatMessages.length > 0 || isLoading)) && (
+                      <div className="flex-1 flex flex-col h-full w-full">
+                      <ChatContainer
+                        messages={chatMessages}
+                        isLoading={isLoading}
+                        onRegenerate={() => {
+                          if (history.length > 0) {
+                             const lastQuery = history[0].natural_language;
+                             handleSubmit(lastQuery);
+                          }
+                        }}
+                        onRetry={(q) => handleSubmit(q)}
+                      />
+                    </div>
                     )}
                     
                     {/* Invisible div to scroll to bottom */}
@@ -739,12 +722,7 @@ export default function Home() {
                   <div className="pt-2 mt-auto">
 
                     <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.05)] dark:shadow-[0_0_40px_rgba(0,0,0,0.3)] border border-white/40 dark:border-slate-700/50 p-2">
-                      <TableContextIndicator 
-                        currentTable={activePreviewTable}
-                        availableTables={schema?.tables?.map(t => t.name) || []}
-                        onSwitchTable={(table) => setActivePreviewTable(table)}
-                        className="mb-2 pl-2 pt-1 z-50 relative"
-                      />
+
                       <QueryInput
                         value={query}
                         onChange={(val) => {
@@ -755,6 +733,17 @@ export default function Home() {
                         isLoading={isLoading}
                         disabled={schemaLoading || isHistoryView}
                         error={error}
+                        tableSelector={
+                          <TableContextIndicator 
+                            currentTable={activePreviewTable}
+                            availableTables={schema?.tables?.map(t => t.name) || []}
+                            onSwitchTable={(table) => {
+                              setActivePreviewTable(table);
+                              setHasInteractedThisSession(true);
+                            }}
+                            className="z-50"
+                          />
+                        }
                       />
                       {!isBackendReachable && (
                         <div className="mt-3 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/30 flex items-center gap-2">
@@ -808,23 +797,36 @@ export default function Home() {
       </div>
 
       {/* Upload Modal */}
-      {showUploadModal && (
-        <div
-          className="fixed inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-xl flex items-center justify-center z-50 p-4 transition-all"
-          onClick={() => setShowUploadModal(false)}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/50 dark:border-slate-700/50 max-w-md w-full p-6 transition-colors relative overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {showUploadModal && (
+          <motion.div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
           >
-            {/* Ambient glow */}
-            <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/20 dark:bg-emerald-500/10 blur-[50px] rounded-full pointer-events-none"></div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowUploadModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/50 dark:border-slate-700/50 max-w-md w-full p-6 transition-colors relative overflow-hidden z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Ambient glow */}
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/20 dark:bg-emerald-500/10 blur-[50px] rounded-full pointer-events-none"></div>
 
-            <div className="flex items-center justify-between mb-6 relative z-10">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                 </div>
@@ -841,6 +843,7 @@ export default function Home() {
             <UploadDatabase
               onUploadSuccess={handleUploadSuccess}
               onUploadError={handleUploadError}
+              isProcessing={schemaLoading}
             />
 
             {uploadError && (
@@ -864,8 +867,9 @@ export default function Home() {
               </div>
             )}
           </motion.div>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
 
       <KeyboardShortcutsModal 
         isOpen={showShortcuts} 

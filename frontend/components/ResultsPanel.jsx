@@ -8,6 +8,7 @@ import EnhancedChartView from './EnhancedChartView';
 import SQLEditor from './SQLEditor';
 import ExportButton from './ExportButton';
 import TypewriterText from './TypewriterText';
+import ExplanationTab from './ExplanationTab';
 
 export default function ResultsPanel({ result, isLoading, onExecuteSql, onClose }) {
   const isSelect = !result || !result.operation_type || result.operation_type === 'SELECT';
@@ -124,7 +125,7 @@ export default function ResultsPanel({ result, isLoading, onExecuteSql, onClose 
       animate={{ opacity: 1, y: 0 }}
       className="w-full bg-white dark:bg-slate-950 rounded-xl shadow-md border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col transition-colors"
     >
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 bg-white dark:bg-slate-950 transition-colors">
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 bg-white dark:bg-slate-950 transition-colors relative z-20">
         <div className="flex overflow-x-auto overflow-y-hidden hide-scrollbar">
           {tabs.map(tab => (
             <button
@@ -177,18 +178,14 @@ export default function ResultsPanel({ result, isLoading, onExecuteSql, onClose 
             className="h-full"
           >
             {activeTab === 'table' && <DataTable data={displayData} />}
-            {activeTab === 'chart' && isDataViz && <EnhancedChartView data={displayData} columns={result.columns || (displayData.length > 0 ? Object.keys(displayData[0]) : [])} />}
+            {activeTab === 'chart' && isDataViz && <EnhancedChartView data={displayData} columns={result.columns || (displayData.length > 0 ? Object.keys(displayData[0]) : [])} isLoading={isLoading} />}
             {activeTab === 'sql' && <SQLEditor sql={result.sql} executionTime={result.execution_time_ms} onExecuteSql={onExecuteSql} />}
             {activeTab === 'explanation' && (
-              <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-5 border border-amber-100 dark:border-amber-900/30">
-                <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400 mb-2 flex items-center gap-2">
-                  <Sparkles size={20} className="text-amber-500" />
-                  Data Analysis
-                </h3>
-                <div className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm md:text-base">
-                  <TypewriterText text={result.explanation} />
-                </div>
-              </div>
+              <ExplanationTab 
+                explanation={result.explanation}
+                isLoading={false}
+                result={result}
+              />
             )}
           </motion.div>
         </AnimatePresence>

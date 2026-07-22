@@ -1,6 +1,7 @@
 'use client';
 
 import { Toaster } from 'react-hot-toast';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 export function ToastProvider() {
   return (
@@ -16,14 +17,14 @@ export function ToastProvider() {
           padding: '12px 16px',
         },
         success: {
-          icon: '✅',
+          icon: <CheckCircle size={20} className="text-green-500" />,
           style: {
             background: '#f0fdf4',
             borderColor: '#86efac',
           },
         },
         error: {
-          icon: '❌',
+          icon: <XCircle size={20} className="text-red-500" />,
           style: {
             background: '#fef2f2',
             borderColor: '#fca5a5',

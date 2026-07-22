@@ -6,7 +6,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-blue)](https://fastapi.tiangolo.com/)
 [![LangChain](https://img.shields.io/badge/LangChain-0.3-green)](https://www.langchain.com/)
-[![Mistral](https://img.shields.io/badge/Mistral-AI-purple)](https://mistral.ai/)
+[![Gemini / OpenAI](https://img.shields.io/badge/Models-Gemini%20%7C%20OpenAI-purple)]()
 
 ## 🚀 Quick Start
 
@@ -40,6 +40,8 @@ npm run dev
 - 📊 **Rich Visualizations**: See results as tables, charts, or raw SQL
 - 📁 **Upload Your Own Database**: Bring your own SQLite database
 - 🔒 **Secure**: Read-only queries, SQL injection protection
+- 🖼️ **Exportable Results**: Export your data visualizations and tables as images instantly
+- 🧩 **Enhanced UI**: Modern, accessible interface powered by Radix UI and Framer Motion
 
 ### Advanced Features
 - 🎯 **Table-Aware Context**: Automatically detects which table you're querying
@@ -47,6 +49,7 @@ npm run dev
 - 💾 **Redis Caching**: Fast response times with intelligent caching
 - 📈 **Token Optimization**: Efficient token usage (<500 tokens per request)
 - 🛡️ **Hallucination Prevention**: Validates tables and columns before execution
+- 🧠 **Local Semantic Search**: Uses Hugging Face embeddings for free, accurate schema matching without API costs
 
 ## 🏗️ Architecture
 
@@ -68,14 +71,17 @@ npm run dev
 ### Frontend
 - **Next.js 14** - React framework with App Router
 - **Tailwind CSS** - Utility-first CSS framework
+- **Radix UI** - Accessible unstyled component primitives
 - **Framer Motion** - Animation library
-- **Chart.js** - Data visualization
+- **Chart.js** & **Recharts** - Data visualization
+- **html2canvas** - Export functionality
 - **Lucide React** - Icon library
 
 ### Backend
 - **FastAPI** - Modern Python web framework
 - **LangChain** - LLM framework with SQL toolkit
 - **Mistral AI** - LLM provider
+- **Hugging Face Embeddings** - Local embedding generation (`all-MiniLM-L6-v2`)
 - **ChromaDB** - Vector store for semantic search
 - **Redis** - Caching and session management
 - **SQLite** - Database engine
@@ -88,10 +94,12 @@ See [docs/API.md](docs/API.md) for full API reference.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MISTRAL_API_KEY` | Mistral API key | Required |
-| `DATABASE_URL` | SQLite database URL | `sqlite:///./nl2sql.db` |
-| `AI_MODEL` | Mistral model to use | `mistral-large-3` |
-| `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
+| `GOOGLE_API_KEY` | Google API key for Gemini models | Required if using Gemini |
+| `OPENAI_API_KEY` | OpenAI API key | Required if using OpenAI |
+| `DATABASE_URL` | Primary database URL (PostgreSQL) | `postgresql://.../nl2sql` |
+| `DEFAULT_DATABASE_URL` | Fallback SQLite database URL | `sqlite:///./database/nl2sql.db` |
+| `AI_MODEL` | LLM model to use | `gemini-2.0-flash-exp` |
+| `CORS_ORIGINS` | Allowed CORS origins | `http://localhost:3000` |
 | `MAX_FILE_SIZE_MB` | Max upload size | `50` |
 | `QUERY_TIMEOUT_SECONDS` | Query timeout | `5` |
 

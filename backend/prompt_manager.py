@@ -225,6 +225,7 @@ RULES:
 4. If the question cannot be answered, output: NO_SQL: Reason
 5. Always include a WHERE clause for UPDATE and DELETE
 6. Always include a semicolon at the end
+7. Automatically capitalize proper nouns (e.g., Names, Cities) correctly when inserting or updating data, even if the user typed them in lowercase.
 
 GOOD EXAMPLES:
 - Question: "Show me all users"

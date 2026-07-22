@@ -36,8 +36,8 @@ export default function QueryHistory({ history, onSelect, onClearHistory }) {
       <div className="flex-grow overflow-y-auto px-2 py-3 custom-scrollbar">
         {history.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 text-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-              🕐
+            <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center border border-slate-200 dark:border-slate-800 shadow-sm transition-colors text-slate-400">
+              <History size={20} />
             </div>
             <div>
               <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No queries yet.</p>

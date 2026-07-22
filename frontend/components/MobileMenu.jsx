@@ -1,13 +1,18 @@
 // frontend/components/MobileMenu.jsx
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 
 export default function MobileMenu({ isOpen, onClose, children }) {
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          <div 
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className="fixed inset-0 bg-black/50 z-40"
             onClick={onClose}
           />
@@ -23,7 +28,7 @@ export default function MobileMenu({ isOpen, onClose, children }) {
                 onClick={onClose}
                 className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
               >
-                ✕
+                <X size={20} className="text-slate-500" />
               </button>
             </div>
             {children}

@@ -1,6 +1,6 @@
 // frontend/components/ExportButton.jsx - Enhanced version
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Table as TableIcon, FileJson, FileText, Globe, Copy, Printer } from 'lucide-react';
@@ -9,6 +9,23 @@ export default function ExportButton({ data, columns, filename = 'query-results'
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const { success, error } = useToast();
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   if (!data || data.length === 0) {
     return (
@@ -158,7 +175,7 @@ export default function ExportButton({ data, columns, filename = 'query-results'
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={isExporting}
@@ -177,7 +194,7 @@ export default function ExportButton({ data, columns, filename = 'query-results'
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden z-10"
+            className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden z-50"
           >
             <button
               onClick={exportCSV}

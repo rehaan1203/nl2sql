@@ -141,13 +141,43 @@ class RedisClient:
     # QUERY CONTEXT / CONVERSATION HISTORY
     # ============================================
     
+    def create_conversation(self, session_id: str, name: str = None) -> bool:
+        """Create a named conversation thread."""
+        try:
+            if not name:
+                name = f"Conversation {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            active_db = self.get_active_database(session_id) or "default"
+            key = f"conversation:{session_id}:{active_db}:meta"
+            self.client.hset(key, "name", name)
+            self.client.hset(key, "created_at", datetime.now().isoformat())
+            # Track all sessions for the user (assuming session_id format user_id:session_id)
+            user_id = session_id.split(':')[0] if ':' in session_id else 'default'
+            self.client.sadd(f"user:sessions:{user_id}", session_id)
+            return True
+        except RedisError as e:
+            logger.error(f"❌ Failed to create conversation: {e}")
+            return False
+            
+    def get_session_meta(self, session_id: str) -> Optional[Dict]:
+        """Get session metadata (name, created_at)"""
+        try:
+            active_db = self.get_active_database(session_id) or "default"
+            key = f"conversation:{session_id}:{active_db}:meta"
+            data = self.client.hgetall(key)
+            if data:
+                return {k.decode('utf-8'): v.decode('utf-8') for k, v in data.items()}
+            return None
+        except RedisError as e:
+            return None
+    
     def add_to_conversation(self, session_id: str, query: str, response: Dict) -> bool:
         """
         Add a query-response pair to conversation history.
         Enables multi-turn conversations with context.
         """
         try:
-            key = f"conversation:{session_id}"
+            active_db = self.get_active_database(session_id) or "default"
+            key = f"conversation:{session_id}:{active_db}"
             entry = {
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
@@ -168,7 +198,8 @@ class RedisClient:
         Returns last 'limit' entries for context.
         """
         try:
-            key = f"conversation:{session_id}"
+            active_db = self.get_active_database(session_id) or "default"
+            key = f"conversation:{session_id}:{active_db}"
             entries = self.client.lrange(key, -limit, -1)
             return [json.loads(e.decode('utf-8')) for e in entries]
         except RedisError as e:

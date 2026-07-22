@@ -32,7 +32,7 @@ class QueryResponse(BaseModel):
     columns: List[str]
     row_count: int
     execution_time_ms: int
-    explanation: str
+    explanation: Optional[str] = None
     error: Optional[str] = None
     affected_rows: Optional[int] = 0
     operation_type: Optional[str] = "SELECT"
@@ -52,6 +52,9 @@ class QueryResponse(BaseModel):
     requires_confirmation: Optional[bool] = False
     auto_switch_message: Optional[str] = None
     validation: Optional[Dict[str, Any]] = None
+    auto_fix_applied: Optional[bool] = False
+    original_sql: Optional[str] = None
+    auto_fix_message: Optional[str] = None
 
 class ValidationResponse(BaseModel):
     """Response for SQL validation"""

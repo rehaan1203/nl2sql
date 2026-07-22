@@ -3,8 +3,9 @@
 import { useState, useRef } from 'react';
 import { Play, X, Zap, Lock, BookOpen, Sparkles, Search, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '../lib/api';
 
-export default function QueryInput({ value, onChange, onSubmit, isLoading, disabled = false, isHistoryView = false, error = null }) {
+export default function QueryInput({ value, onChange, onSubmit, isLoading, disabled = false, isHistoryView = false, error = null, tableSelector = null }) {
   const inputRef = useRef(null);
   
   // Audio state and refs
@@ -103,7 +104,7 @@ export default function QueryInput({ value, onChange, onSubmit, isLoading, disab
           const formData = new FormData();
           formData.append('file', audioBlob, 'recording.webm');
           
-          const response = await fetch('http://localhost:8000/api/audio/transcribe', {
+          const response = await fetch(`${API_URL}/audio/transcribe`, {
             method: 'POST',
             body: formData,
           });
@@ -159,32 +160,39 @@ export default function QueryInput({ value, onChange, onSubmit, isLoading, disab
   const isBusy = isLoading || isTranscribing;
 
   return (
-    <div className="relative group w-full">
-      {/* Glowing background effect */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl opacity-20 group-focus-within:opacity-40 blur transition duration-500"></div>
+    <div className="relative group w-full flex flex-col gap-2">
+      {tableSelector && (
+        <div className="flex-shrink-0 self-start z-20">
+          {tableSelector}
+        </div>
+      )}
       
-      <div className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 border ${
-        error ? 'border-red-500/50' : isHistoryView ? 'border-blue-300 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/40' : 'border-slate-200/50 dark:border-slate-700/50'
-      }`}>
-        <div className="flex items-center gap-2 p-1">
-          {/* Search Icon */}
-          <div className="pl-3 text-slate-400 dark:text-slate-500">
-            {isHistoryView ? <Lock size={18} className="text-blue-500" /> : <Search size={18} strokeWidth={2.5} className="text-blue-500/70" />}
-          </div>
-          
-          {/* Input */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isHistoryView ? "History view (read-only)" : (isRecording ? "Listening..." : "Ask anything about your data... e.g., 'How many users signed up from California last month?'")}
-            className={`flex-1 min-w-0 py-3.5 bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm font-medium ${isHistoryView ? 'text-blue-900 dark:text-blue-400' : ''}`}
-            disabled={isBusy || disabled || isHistoryView}
-          />
-          
-          {/* Clear Button */}
+      <div className="relative w-full">
+        {/* Glowing background effect */}
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl opacity-20 group-focus-within:opacity-40 blur transition duration-500"></div>
+        
+        <div className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 border ${
+          error ? 'border-red-500/50' : isHistoryView ? 'border-blue-300 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/40' : 'border-slate-200/50 dark:border-slate-700/50'
+        }`}>
+          <div className="flex items-center gap-2 p-1">
+            {/* Search Icon */}
+            <div className="pl-3 pr-1 text-slate-400 dark:text-slate-500 hidden sm:block">
+              {isHistoryView ? <Lock size={18} className="text-blue-500" /> : <Search size={18} strokeWidth={2.5} className="text-blue-500/70" />}
+            </div>
+            
+            {/* Input */}
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isHistoryView ? "History view (read-only)" : (isRecording ? "Listening..." : "Ask anything about your data...")}
+              className={`flex-1 min-w-0 py-3.5 bg-transparent text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm font-medium ${isHistoryView ? 'text-blue-900 dark:text-blue-400' : ''}`}
+              disabled={isBusy || disabled || isHistoryView}
+            />
+            
+            {/* Clear Button */}
           <AnimatePresence>
             {value && !isBusy && !isHistoryView && (
               <motion.button
@@ -254,19 +262,20 @@ export default function QueryInput({ value, onChange, onSubmit, isLoading, disab
         
         {/* Footer Help Text */}
         <div className="flex items-center gap-4 px-4 pb-2.5 text-xs text-slate-400 dark:text-slate-500 flex-wrap">
-          <span className="flex items-center gap-1">
-            <span className="text-base">⚡</span> Powered by AI
+          <span className="flex items-center gap-1.5">
+            <Zap size={14} className="text-blue-500 fill-blue-500/20" /> Powered by AI
           </span>
           <span className="w-px h-3 bg-slate-300 dark:bg-slate-700"></span>
-          <span className="flex items-center gap-1">
-            <span className="text-base">🔒</span> Private
+          <span className="flex items-center gap-1.5">
+            <Lock size={14} className="text-slate-500" /> Private
           </span>
           <span className="w-px h-3 bg-slate-300 dark:bg-slate-700"></span>
-          <span className="flex items-center gap-1">
-            <span className="text-base">📖</span> Read-only mode
+          <span className="flex items-center gap-1.5">
+            <BookOpen size={14} className="text-slate-500" /> Read-only mode
           </span>
         </div>
       </div>
+    </div>
     </div>
   );
 }

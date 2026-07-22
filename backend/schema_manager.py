@@ -24,10 +24,14 @@ class SchemaManager:
         self.database_url = database_url
         self.session_id = session_id
         self._current_table = None
-        self.engine = create_engine(database_url)
-        self.db = SQLDatabase.from_uri(database_url)
+        from sqlalchemy.pool import NullPool
+        is_sqlite = database_url.startswith("sqlite")
+        engine_kwargs = {"poolclass": NullPool} if is_sqlite else {}
+        
+        self.engine = create_engine(database_url, **engine_kwargs)
+        self.db = SQLDatabase.from_uri(database_url, engine_args=engine_kwargs)
         if load_embeddings:
-            from langchain_huggingface import HuggingFaceEmbeddings
+            from langchain_community.embeddings import HuggingFaceEmbeddings
             self.embeddings = HuggingFaceEmbeddings(
                 model_name=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
                 model_kwargs={'device': 'cpu'},

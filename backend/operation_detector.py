@@ -39,9 +39,9 @@ class OperationDetector:
             "REVOKE": r'^\s*REVOKE\s+\w+\s+ON\s+'
         },
         "TCL": {
-            "BEGIN": r'^\s*BEGIN\s+(?:TRANSACTION|WORK)?',
-            "COMMIT": r'^\s*COMMIT\s+(?:TRANSACTION|WORK)?',
-            "ROLLBACK": r'^\s*ROLLBACK\s+(?:TRANSACTION|WORK)?(?:\s+TO\s+SAVEPOINT\s+\w+)?',
+            "BEGIN": r'^\s*BEGIN(?:\s+(?:TRANSACTION|WORK))?\b',
+            "COMMIT": r'^\s*COMMIT(?:\s+(?:TRANSACTION|WORK))?\b',
+            "ROLLBACK": r'^\s*ROLLBACK(?:\s+(?:TRANSACTION|WORK))?(?:\s+TO\s+SAVEPOINT\s+\w+)?\b',
             "SAVEPOINT": r'^\s*SAVEPOINT\s+\w+',
             "RELEASE": r'^\s*RELEASE\s+SAVEPOINT\s+\w+',
             "ROLLBACK_TO": r'^\s*ROLLBACK\s+TO\s+\w+'

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchDatabases, deleteDatabase, resetDatabase } from '../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Database, RefreshCw, Trash2 } from 'lucide-react';
 
 export default function DatabaseManager({ onSelect, currentDatabase, onClose }) {
   const [databases, setDatabases] = useState([]);
@@ -44,7 +45,7 @@ export default function DatabaseManager({ onSelect, currentDatabase, onClose }) 
       <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
         <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200">Your Databases</h3>
         <button onClick={loadDatabases} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          <RefreshCw className="w-4 h-4" />
         </button>
       </div>
       
@@ -63,7 +64,7 @@ export default function DatabaseManager({ onSelect, currentDatabase, onClose }) 
                 }}
                 className="flex-1 text-left p-3 flex items-start gap-3"
               >
-                <div className="text-xl mt-0.5">🗄️</div>
+                <div className="mt-0.5"><Database size={20} className="text-blue-500" /></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{db.filename}</p>
                   <div className="flex items-center gap-2 mt-1">
@@ -79,9 +80,7 @@ export default function DatabaseManager({ onSelect, currentDatabase, onClose }) 
                 className="p-2 mr-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
                 title="Delete database"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           ))

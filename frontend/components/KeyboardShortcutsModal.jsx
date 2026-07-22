@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Keyboard } from 'lucide-react';
+import { Keyboard, X } from 'lucide-react';
 
 export default function KeyboardShortcutsModal({ isOpen, onClose }) {
   const modalRef = useRef(null);
@@ -58,19 +58,27 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
     <AnimatePresence>
       {isOpen && (
         <motion.div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-          onClick={onClose}
+          transition={{ duration: 0.2 }}
         >
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={onClose}
+          />
           <motion.div
             ref={modalRef}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 relative z-10"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -85,7 +93,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:ring-2 focus:ring-blue-500 rounded p-1"
                 aria-label="Close modal"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
             

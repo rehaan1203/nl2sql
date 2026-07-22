@@ -2,14 +2,49 @@ import re
 import logging
 from typing import Dict, Any, Optional, List
 from langchain_community.utilities.sql_database import SQLDatabase
-from langchain.chains import create_sql_query_chain
-from langchain import hub
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+
+def create_sql_query_chain(llm, db):
+    template = """Given an input question, first create a syntactically correct {dialect} query to run.
+Use the following format:
+
+Question: "Question here"
+SQLQuery: "SQL Query to run"
+
+Only use the following tables:
+{table_info}
+
+Question: {question}"""
+    prompt = PromptTemplate.from_template(template)
+    
+    def _get_table_info(_):
+        return db.get_table_info()
+        
+    def _get_dialect(_):
+        return db.dialect
+        
+    return (
+        RunnablePassthrough.assign(
+            table_info=_get_table_info,
+            dialect=_get_dialect
+        )
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage
 import os
 from prompt_manager import PromptManager
 from prompts.operation_detection import OperationDetectionPrompts
 from prompts.explanation import ExplanationPrompts
+from explainer import QueryExplainer
+from utils.model_metrics import ModelLoadingMetrics
+
+model_metrics = ModelLoadingMetrics()
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +69,10 @@ class SQLQueryAgent:
         self.verbose = verbose
         
         # Initialize database connection
-        self.db = SQLDatabase.from_uri(database_url)
+        from sqlalchemy.pool import NullPool
+        is_sqlite = database_url.startswith("sqlite")
+        engine_kwargs = {"poolclass": NullPool} if is_sqlite else {}
+        self.db = SQLDatabase.from_uri(database_url, engine_args=engine_kwargs)
         
         # Patch db.run to intercept write operations and guide the AI
         original_run = self.db.run
@@ -61,6 +99,7 @@ class SQLQueryAgent:
         # Initialize LLM
         groq_api_key = os.getenv("GROQ_API_KEY")
         mistral_api_key = os.getenv("MISTRAL_API_KEY")
+        hf_api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
         
         if mistral_api_key:
             from langchain_mistralai import ChatMistralAI
@@ -80,9 +119,11 @@ class SQLQueryAgent:
                 timeout=30,
             )
             logger.info(f"✅ Groq LLM initialized with model: {model}")
+        elif hf_api_key:
+            self.llm = self._init_huggingface(model, temperature)
         else:
             self.llm = None
-            logger.warning("⚠️ No AI API key found (tried Groq and Mistral)")
+            logger.warning("⚠️ No AI API key found (tried Groq, Mistral, and HuggingFace)")
         
         self.prompt_manager = PromptManager()
         
@@ -96,9 +137,131 @@ class SQLQueryAgent:
         self.sql_validator = None
         self.executor = None
         self.response_validator = None
+        
+        # Initialize explainer
+        self.explainer = QueryExplainer(self.llm)
+        
+        # Track auto-fix metrics
+        self.auto_fix_stats = {
+            "attempts": 0,
+            "successes": 0,
+            "failures": 0
+        }
     
-
-    
+    @model_metrics.track_load("huggingface_llm")
+    def _init_huggingface(self, model: str, temperature: float):
+        """Initialize Hugging Face model with optimized loading."""
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            import torch
+            from tqdm import tqdm
+            import concurrent.futures
+            
+            model_name = os.getenv("HF_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.1")
+            
+            logger.info(f"🔄 Loading Hugging Face model: {model_name}")
+            logger.info("   (This may take 1-2 minutes on first load)")
+            
+            # Clear GPU cache before loading
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+                logger.info(f"🧹 GPU cache cleared, available memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
+            
+            # Load tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                cache_dir=os.getenv("HF_CACHE_DIR", "./hf_cache"),
+                use_fast=True,
+            )
+            
+            # Try multiple dtype options
+            dtype_options = ["auto", torch.float16, torch.bfloat16, torch.float32]
+            loaded_model = None
+            
+            with tqdm(total=100, desc="Loading model", unit="%") as pbar:
+                pbar.update(10)
+                
+                for dtype in dtype_options:
+                    try:
+                        logger.info(f"🔄 Attempting to load with dtype: {dtype}")
+                        
+                        def load_model():
+                            return AutoModelForCausalLM.from_pretrained(
+                                model_name,
+                                cache_dir=os.getenv("HF_CACHE_DIR", "./hf_cache"),
+                                torch_dtype=dtype,
+                                low_cpu_mem_usage=True,
+                                use_safetensors=True,
+                                device_map="auto",
+                                trust_remote_code=True,
+                            )
+                        
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(load_model)
+                            try:
+                                loaded_model = future.result(timeout=300) # 5 min timeout
+                                logger.info(f"✅ Successfully loaded with dtype: {dtype}")
+                                break
+                            except concurrent.futures.TimeoutError:
+                                logger.error("❌ Model loading timed out after 5 minutes")
+                                raise TimeoutError("Model loading timed out")
+                            except Exception as e:
+                                raise e
+                    except TimeoutError:
+                        raise
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed with dtype {dtype}: {e}")
+                        continue
+                
+                if not loaded_model:
+                    raise RuntimeError("Failed to load model with any dtype option")
+                
+                pbar.update(90)
+            
+            if torch.cuda.is_available():
+                logger.info(f"   - Model loaded on: GPU (CUDA)")
+            else:
+                logger.info(f"   - Model loaded on: CPU")
+            
+            logger.info(f"   - Precision: {loaded_model.dtype}")
+            logger.info(f"✅ Model loaded successfully")
+            
+            # Custom LLM wrapper
+            from langchain.llms.base import LLM
+            
+            class HuggingFaceLLM(LLM):
+                def __init__(self, model, tokenizer, temperature):
+                    self.model = model
+                    self.tokenizer = tokenizer
+                    self.temperature = temperature
+                
+                def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+                    inputs = self.tokenizer(prompt, return_tensors="pt")
+                    if torch.cuda.is_available():
+                        inputs = {k: v.to("cuda") for k, v in inputs.items()}
+                    
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=512,
+                        temperature=self.temperature,
+                        do_sample=True,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                    )
+                    
+                    response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                    response = response[len(prompt):].strip()
+                    return response
+                
+                @property
+                def _llm_type(self) -> str:
+                    return "huggingface"
+            
+            return HuggingFaceLLM(loaded_model, tokenizer, temperature)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load Hugging Face model: {e}")
+            return None    
     def query(
         self, 
         natural_language: str,
@@ -264,12 +427,41 @@ class SQLQueryAgent:
                     # Fallback to direct database execution
                     execution_result = self._direct_execute(sql, sql_operation)
                 
+                auto_fix_applied = False
+                original_sql = None
+                
+                if not execution_result.get("success", False):
+                    # Auto-fix attempt
+                    auto_fix_applied = True
+                    original_sql = sql
+                    
+                    self.auto_fix_stats["attempts"] += 1
+                    fixed_sql = self._attempt_auto_fix(sql, execution_result.get("error", ""))
+                    
+                    if fixed_sql:
+                        logger.info(f"✅ Auto-fix applied: {original_sql} → {fixed_sql}")
+                        # Re-execute with fixed SQL
+                        if self.executor:
+                            execution_result = self.executor.execute(fixed_sql, category=sql_category, operation_type=sql_operation)
+                        else:
+                            execution_result = self._direct_execute(fixed_sql, sql_operation)
+                            
+                        if execution_result.get("success", False):
+                            self.auto_fix_stats["successes"] += 1
+                            sql = fixed_sql
+                        else:
+                            self.auto_fix_stats["failures"] += 1
+                    else:
+                        self.auto_fix_stats["failures"] += 1
+
                 if not execution_result.get("success", False):
                     return {
                         "success": False,
                         "error": execution_result.get("error", "Unknown execution error"),
                         "sql": "\n\n".join(all_executed_sqls + [sql]),
-                        "operation_type": sql_operation
+                        "operation_type": sql_operation,
+                        "auto_fix_applied": auto_fix_applied,
+                        "original_sql": original_sql
                     }
                     
                 all_executed_sqls.append(sql)
@@ -285,7 +477,9 @@ class SQLQueryAgent:
                     "execution_time_ms": cumulative_execution_time,
                     "operation_type": sql_operation,
                     "success": True,
-                    "message": execution_result.get("message", "Operation completed")
+                    "message": execution_result.get("message", "Operation completed"),
+                    "auto_fix_applied": auto_fix_applied,
+                    "original_sql": original_sql
                 }
             
             # Determine overall operation type (Write takes precedence over Read)
@@ -301,17 +495,20 @@ class SQLQueryAgent:
                 current_table = tables[0] if tables else "unknown"
 
             # Step 8: Generate explanation and presentation mode
-            explanation_result = self._generate_explanation(
-                final_response["sql"], 
-                natural_language, 
-                primary_operation,
-                final_response.get("data", []),
-                current_table=current_table
-            )
-            final_response["explanation"] = explanation_result.get("explanation", "Completed operation.")
-            final_response["presentation_mode"] = explanation_result.get("presentation_mode", "data_viz")
-            if "validation" in explanation_result:
-                final_response["validation"] = explanation_result["validation"]
+            explanation_text = "Completed operation."
+            if os.getenv("ENABLE_AI_EXPLANATIONS", "true").lower() == "true":
+                explanation_text = self.explainer.explain_query(
+                    natural_language=natural_language,
+                    sql=final_response["sql"],
+                    data=final_response.get("data", []),
+                    row_count=final_response.get("row_count", 0),
+                    columns=final_response.get("columns", []),
+                    operation_type=primary_operation,
+                    affected_rows=final_response.get("affected_rows", 0)
+                )
+            
+            final_response["explanation"] = explanation_text
+            final_response["presentation_mode"] = "data_viz" if primary_operation == "SELECT" else "crud"
             final_response["operation_type"] = primary_operation
             
             # Step 10: For write operations, get the updated data
@@ -330,6 +527,15 @@ class SQLQueryAgent:
                         logger.warning(f"Failed to fetch refreshed data: {e}")
             
             logger.info(f"✅ Query completed: {primary_operation}")
+            
+            # Inject chart error parsing if needed
+            if final_response["presentation_mode"] == "data_viz":
+                # Check if data qualifies for chart
+                chart_error = self._detect_chart_error(final_response.get("error", ""), final_response.get("data", []))
+                if chart_error["type"] != "default":
+                    final_response["error"] = chart_error  # Return dictionary for frontend to parse
+                    final_response["success"] = False
+
             return final_response
             
         except Exception as e:
@@ -337,8 +543,79 @@ class SQLQueryAgent:
             return {
                 "success": False,
                 "error": str(e),
-                "operation_type": operation_type if 'operation_type' in locals() else "SELECT"
+                "sql": None,
+                "operation_type": "UNKNOWN"
             }
+            
+    def _attempt_auto_fix(self, sql: str, error: str) -> Optional[str]:
+        """Attempt to fix common SQL errors dynamically."""
+        fixed_sql = sql
+        error_lower = error.lower()
+        
+        # Fix 1: Table name typos
+        if "no such table" in error_lower:
+            table_name = self._extract_table_names(sql)
+            if table_name:
+                available_tables = [t.name for t in self.sql_validator.schema_manager.get_schema().tables] if self.sql_validator else []
+                similar = self._find_similar_name(table_name[0], available_tables)
+                if similar:
+                    import re
+                    fixed_sql = re.sub(rf'\b{table_name[0]}\b', similar, sql, flags=re.IGNORECASE)
+                    return fixed_sql
+                    
+        # Fix 2: Column name typos
+        if "no such column" in error_lower:
+            # Simple extraction heuristic for sqlite3 column error
+            import re
+            match = re.search(r'no such column: (\w+)', error)
+            if match:
+                column_name = match.group(1)
+                tables = self._extract_table_names(sql)
+                if tables and self.sql_validator:
+                    available_columns = []
+                    for t in self.sql_validator.schema_manager.get_schema().tables:
+                        if t.name.lower() == tables[0].lower():
+                            available_columns = [c.name for c in t.columns]
+                            break
+                    
+                    similar = self._find_similar_name(column_name, available_columns)
+                    if similar:
+                        fixed_sql = re.sub(rf'\b{column_name}\b', similar, sql, flags=re.IGNORECASE)
+                        return fixed_sql
+        return None
+        
+    def _find_similar_name(self, name: str, candidates: List[str]) -> Optional[str]:
+        """Find the most similar name using Levenshtein distance."""
+        from difflib import get_close_matches
+        matches = get_close_matches(name, candidates, n=1, cutoff=0.7)
+        return matches[0] if matches else None
+
+    def _detect_chart_error(self, error: str, data: List[Dict]) -> Dict:
+        """Classify chart errors for better user messages."""
+        error_lower = str(error).lower() if error else ""
+        
+        if not data or len(data) == 0:
+            return {
+                "type": "no_data",
+                "message": "No data available to visualize"
+            }
+        
+        if "numeric" in error_lower or "number" in error_lower:
+            return {
+                "type": "wrong_format",
+                "message": "Chart requires numeric data"
+            }
+        
+        if len(data) > 1000:
+            return {
+                "type": "too_many_points",
+                "message": f"Dataset too large ({len(data)} points)"
+            }
+        
+        return {
+            "type": "default",
+            "message": str(error)
+        }
     
     def _detect_operation_type(self, natural_language: str) -> str:
         """Detect what type of operation the user wants from natural language."""
@@ -399,8 +676,11 @@ class SQLQueryAgent:
             # Find all SQL in markdown blocks
             sql_matches = re.findall(r'```(?:sql)?\s*(.*?)\s*```', output, re.IGNORECASE | re.DOTALL)
             for match in sql_matches:
-                if match.strip() not in sqls:
-                    sqls.append(match.strip())
+                # Split multiple statements separated by semicolon
+                statements = [stmt.strip() for stmt in match.split(';') if stmt.strip()]
+                for stmt in statements:
+                    if stmt not in sqls:
+                        sqls.append(stmt)
             
             # Fallback to greedy pattern matching if nothing found
             if not sql_matches:
@@ -445,7 +725,7 @@ class SQLQueryAgent:
                         # Overwrite sqls so we only keep the LAST executed or checked query
                         sqls = [query]
         
-        # Deduplicate while preserving order
+        # Deduplicate while preserving order, then smartly reorder to avoid constraint issues
         seen = set()
         unique_sqls = []
         valid_keywords = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "GRANT", "REVOKE", "BEGIN", "COMMIT", "ROLLBACK", "TRUNCATE"]
@@ -467,8 +747,19 @@ class SQLQueryAgent:
                 
             if clean_s not in seen:
                 seen.add(clean_s)
-                unique_sqls.append(s)
+                unique_sqls.append(clean_s)
                 
+        # Smart reordering: prioritize DELETE > INSERT > UPDATE > SELECT to prevent constraint errors in multi-action requests
+        def get_op_priority(sql):
+            sql_upper = sql.upper()
+            if sql_upper.startswith("DELETE"): return 1
+            if sql_upper.startswith("INSERT"): return 2
+            if sql_upper.startswith("UPDATE"): return 3
+            if sql_upper.startswith("CREATE") or sql_upper.startswith("ALTER") or sql_upper.startswith("DROP"): return 0 # DDL first
+            return 4 # Everything else (SELECT, etc)
+            
+        unique_sqls.sort(key=get_op_priority)
+        
         return unique_sqls
     
     def _extract_table_names(self, sql: str) -> List[str]:
@@ -496,7 +787,10 @@ class SQLQueryAgent:
         try:
             # Use SQLAlchemy directly
             from sqlalchemy import create_engine, text
-            engine = create_engine(self.database_url)
+            from sqlalchemy.pool import NullPool
+            is_sqlite = self.database_url.startswith("sqlite")
+            engine_kwargs = {"poolclass": NullPool} if is_sqlite else {}
+            engine = create_engine(self.database_url, **engine_kwargs)
             
             with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                 if operation_type != "SELECT":

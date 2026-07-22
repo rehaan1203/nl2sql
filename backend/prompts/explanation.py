@@ -26,6 +26,7 @@ class ExplanationPrompts:
     2. For "data_viz" mode: Provide a concise 2-3 sentence business analysis or narrative summary interpreting the actual data returned (e.g., identifying trends, top results, or key insights). DO NOT explain the SQL mechanics (e.g., do not say "I used a SELECT statement with a JOIN").
     3. For "crud" mode: Provide a brief 1-2 sentence explanation of what data was affected.
     4. Keep responses concise and human-friendly.
+    5. Ensure perfect grammar, spelling, and a professional tone in your response. Proofread your text to avoid typos (e.g., ensure you output "The" instead of "Te").
     
     ### OUTPUT FORMAT (You MUST output ONLY valid JSON without markdown formatting):
     {{

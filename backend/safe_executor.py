@@ -22,13 +22,27 @@ class SafeExecutor:
         self.database_url = database_url
         self.timeout_seconds = timeout_seconds
         
+        from sqlalchemy.pool import QueuePool, NullPool
+        
+        is_sqlite = database_url.startswith("sqlite")
+        
+        engine_kwargs = {
+            "pool_pre_ping": True,
+            "pool_recycle": 3600
+        }
+        
+        if is_sqlite:
+            engine_kwargs["poolclass"] = NullPool
+        else:
+            engine_kwargs.update({
+                "poolclass": QueuePool,
+                "pool_size": 20,
+                "max_overflow": 10
+            })
+            
         self.engine = create_engine(
             database_url,
-            poolclass=QueuePool,
-            pool_size=20,
-            max_overflow=10,
-            pool_pre_ping=True,
-            pool_recycle=3600
+            **engine_kwargs
         )
         
         # Transaction state
@@ -37,6 +51,17 @@ class SafeExecutor:
         self.transaction_id = None
         
         logger.info(f"✅ SafeExecutor initialized for SQLite")
+    
+    def get_pool_status(self) -> Dict[str, Any]:
+        """Get connection pool statistics."""
+        if hasattr(self.engine, 'pool'):
+            return {
+                "size": self.engine.pool.size(),
+                "checkedin": self.engine.pool.checkedin(),
+                "overflow": self.engine.pool.overflow(),
+                "total": getattr(self.engine.pool, "total", lambda: 0)() if hasattr(self.engine.pool, "total") else 0
+            }
+        return {"status": "pool_not_available"}
     
     def execute(self, sql: str, category: str = "DML", operation_type: str = "SELECT") -> Dict[str, Any]:
         """
