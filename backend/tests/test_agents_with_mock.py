@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock, patch
 import pytest
-from agents import SQLQueryAgent
+from core.agents import SQLQueryAgent
 
 class TestSQLQueryAgentWithMock:
     @patch('agents.ChatMistralAI')

@@ -28,18 +28,18 @@ import json
 
 from utils.metrics import metrics
 
-from models import *
-from schema_manager import SchemaManager
-from vector_store import VectorStore
-from agents import SQLQueryAgent
-from schema_analyzer import SchemaAnalyzer
-from query_detector import QueryDetector
-from response_validator import ResponseValidator
+from api.models import *
+from schema.schema_manager import SchemaManager
+from db.vector_store import VectorStore
+from core.agents import SQLQueryAgent
+from schema.schema_analyzer import SchemaAnalyzer
+from core.query_detector import QueryDetector
+from core.response_validator import ResponseValidator
 
-from sql_validator import SQLValidator
-from safe_executor import SafeExecutor
-from redis_client import RedisClient
-from errors import ErrorHandler, NL2SQLError, ErrorType
+from core.sql_validator import SQLValidator
+from core.safe_executor import SafeExecutor
+from db.redis_client import RedisClient
+from api.errors import ErrorHandler, NL2SQLError, ErrorType
 from utils.model_cache import ModelCache
 
 model_cache = ModelCache()
@@ -378,10 +378,10 @@ async def run_query(request: Request, body: QueryRequest):
                     temp_db_url = f"sqlite:///{safe_path}"
                     
                     # Create temporary components to ensure the AI uses the uploaded DB
-                    from agents import SQLQueryAgent
-                    from safe_executor import SafeExecutor
-                    from sql_validator import SQLValidator
-                    from schema_manager import SchemaManager
+                    from core.agents import SQLQueryAgent
+                    from core.safe_executor import SafeExecutor
+                    from core.sql_validator import SQLValidator
+                    from schema.schema_manager import SchemaManager
                     
                     current_agent = SQLQueryAgent(
                         database_url=temp_db_url,
@@ -651,7 +651,7 @@ async def delete_table(table_name: str, request_obj: Request):
                     db_url_to_use = f"sqlite:///{safe_path}"
                     
         # Execute DROP TABLE
-        from safe_executor import SafeExecutor
+        from core.safe_executor import SafeExecutor
         temp_executor = SafeExecutor(
             database_url=db_url_to_use,
             timeout_seconds=int(os.getenv("QUERY_TIMEOUT_SECONDS", 5))
@@ -720,7 +720,7 @@ async def execute_sql(request_obj: Request, request: ExecuteSqlRequest):
                     safe_path = temp_db_path.replace('\\', '/')
                     temp_db_url = f"sqlite:///{safe_path}"
                     
-                    from safe_executor import SafeExecutor
+                    from core.safe_executor import SafeExecutor
                     current_executor = SafeExecutor(
                         database_url=temp_db_url,
                         timeout_seconds=int(os.getenv("QUERY_TIMEOUT_SECONDS", 5))

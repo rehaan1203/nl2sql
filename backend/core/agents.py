@@ -38,10 +38,10 @@ Question: {question}"""
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage
 import os
-from prompt_manager import PromptManager
+from core.prompt_manager import PromptManager
 from prompts.operation_detection import OperationDetectionPrompts
 from prompts.explanation import ExplanationPrompts
-from explainer import QueryExplainer
+from core.explainer import QueryExplainer
 from utils.model_metrics import ModelLoadingMetrics
 
 model_metrics = ModelLoadingMetrics()
@@ -302,7 +302,7 @@ class SQLQueryAgent:
                     current_table = context_table if 'context_table' in locals() and context_table else (relevant_tables[0] if relevant_tables else None)
                     
                     if schema_mgr:
-                        from query_detector import QueryDetector
+                        from core.query_detector import QueryDetector
                         query_detector = QueryDetector(schema_mgr)
                         mentioned_table = query_detector.detect_table_in_query(
                             natural_language,
@@ -417,7 +417,7 @@ class SQLQueryAgent:
                     # Invalidate cache if DDL operation
                     if sql_category == "DDL":
                         try:
-                            from redis_client import RedisClient
+                            from db.redis_client import RedisClient
                             temp_redis = RedisClient()
                             temp_redis.invalidate_all_cache()
                             logger.info("🗑️ Invalidated Redis cache after DDL operation")

@@ -1,7 +1,7 @@
 # backend/tests/test_executor.py - Executor tests
 
 import pytest
-from safe_executor import SafeExecutor
+from core.safe_executor import SafeExecutor
 
 class TestSafeExecutor:
     def test_select_execution(self, test_db_path):

@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
-/backend/venv/
-/backend/env/
+venv/
+.venv/
+env/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -54,6 +55,5 @@ Thumbs.db
 tree.txt
 /backend/hf_cache/
 /backend/uploads/
-/backend/.active_db
+.active_db
 /backend/chroma_db/
-/backend/pyproject.toml

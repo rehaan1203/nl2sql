@@ -16,10 +16,10 @@ git clone https://github.com/yourusername/nl2sql-generator.git
 cd nl2sql-generator
 
 # Backend setup
-cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+cd backend
 cp .env.example .env
 # Edit .env with your API keys
 uvicorn main:app --reload

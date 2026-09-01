@@ -1,10 +1,10 @@
 # backend/tests/test_agents.py - Agent tests
 
 import pytest
-from agents import SQLQueryAgent
-from schema_manager import SchemaManager
-from safe_executor import SafeExecutor
-from sql_validator import SQLValidator
+from core.agents import SQLQueryAgent
+from schema.schema_manager import SchemaManager
+from core.safe_executor import SafeExecutor
+from core.sql_validator import SQLValidator
 
 class TestSQLQueryAgent:
     def test_sql_extraction(self, test_db_path):
@@ -28,7 +28,7 @@ class TestSQLQueryAgent:
     
     def test_operation_detection(self, test_db_path):
         """Test SQL operation detection."""
-        from operation_detector import OperationDetector
+        from core.operation_detector import OperationDetector
         detector = OperationDetector()
         
         # Test DDL

@@ -3,9 +3,9 @@ import logging
 import random
 from typing import Dict, Any, List
 from langchain_core.messages import SystemMessage, HumanMessage
-from prompt_manager import PromptManager
+from core.prompt_manager import PromptManager
 from prompts.suggestions import SuggestionsPrompts
-from data_profiler import DataProfiler
+from schema.data_profiler import DataProfiler
 
 logger = logging.getLogger(__name__)
 

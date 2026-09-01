@@ -1,9 +1,9 @@
 # backend/tests/test_validator.py - Validator tests
 
 import pytest
-from sql_validator import SQLValidator
-from schema_manager import SchemaManager
-from operation_detector import OperationDetector
+from core.sql_validator import SQLValidator
+from schema.schema_manager import SchemaManager
+from core.operation_detector import OperationDetector
 
 class TestSQLValidator:
     def test_table_validation(self, test_db_path):

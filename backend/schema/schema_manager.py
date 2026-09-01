@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 from langchain_community.utilities.sql_database import SQLDatabase
 import logging
 
-from models import SchemaResponse, TableSchema, ColumnSchema
+from api.models import SchemaResponse, TableSchema, ColumnSchema
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class SchemaManager:
             return self._format_schema(schema_data.tables)
         
         # With query, use vector search to find relevant tables
-        from vector_store import VectorStore
+        from db.vector_store import VectorStore
         vector_store = VectorStore(self.embeddings)
         relevant_tables = vector_store.search(query, top_k)
         

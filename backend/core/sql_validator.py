@@ -2,8 +2,8 @@ import re
 import logging
 from typing import Tuple, List, Dict, Optional
 from langchain_groq import ChatGroq
-from prompt_manager import PromptManager
-from operation_detector import OperationDetector
+from core.prompt_manager import PromptManager
+from core.operation_detector import OperationDetector
 
 logger = logging.getLogger(__name__)
 
